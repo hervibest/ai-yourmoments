@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env/
+*.env
+
+# Logs and databases
+logs/
+*.log
+db.sqlite3
+
+# Dependency directories
+pip-wheel-metadata/
+*.egg-info/
+*.egg/
+dist/
+build/
+
+# IDE specific files
+.vscode/
+.idea/
+*.iml
+
+# Coverage reports
+htmlcov/
+.coverage
+.tox/
+
+# gRPC generated files
+*_pb2.py
+*_pb2_grpc.py
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Docker files
+docker-compose.override.yml
+.dockerignore
+
+# Pytest cache
+.pytest_cache/
+
+# Miscellaneous
+.DS_Store
+Thumbs.db

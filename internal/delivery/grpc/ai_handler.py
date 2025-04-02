@@ -1,17 +1,20 @@
 import grpc
-from proto import ai_service_pb2, ai_service_pb2_grpc
-from usecases.ai_usecase import AIUseCase
+from internal.pb import ai_pb2, ai_pb2_grpc
+from internal.usecase.ai_usecase import AIUseCase
 
-class AIHandler(ai_service_pb2_grpc.AIServiceServicer):
+class AIHandler(ai_pb2_grpc.AiServiceServicer):
     def __init__(self, ai_usecase: AIUseCase):
         self.ai_usecase = ai_usecase
 
-    def ProcessProfilePhotoFile(self, request, context):
+    def ProcessPhoto(self, request, context):
         """Client hanya menerima status sukses, sementara pemrosesan berjalan async"""
-        success, message = self.ai_usecase.process_file(request.file_id, request.file_url)
-        return ai_service_pb2.ProcessResponse(success=success, message=message)
-    
-    def ProcessFile(self, request, context):
+        success, error_message = self.ai_usecase.process_photo(request.id, request.url)
+        # Misalnya: status 1 untuk sukses, 0 untuk gagal
+        status = 200 if success else 500
+        return ai_pb2.ProcessPhotoResponse(status=status, error=error_message)
+
+    def ProcessFacecam(self, request, context):
         """Client hanya menerima status sukses, sementara pemrosesan berjalan async"""
-        success, message = self.ai_usecase.process_file(request.file_id, request.file_url)
-        return ai_service_pb2.ProcessResponse(success=success, message=message)
+        success, error_message = self.ai_usecase.process_facecam(request.id, request.url)
+        status = 200 if success else 500
+        return ai_pb2.ProcessFacecamResponse(status=status, error=error_message)

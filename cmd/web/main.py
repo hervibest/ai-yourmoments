@@ -89,7 +89,7 @@ def serve():
     # Tambahkan Health Check Service gRPC (internal gRPC health, tidak dipakai oleh Consul TTL check)
     health_servicer = health.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
-    service_name = "grpc-ai-service"
+    service_name = "ai-svc-grpc"
     
     host = "0.0.0.0"
     port = 50051

@@ -44,3 +44,20 @@ def process_photo_task(photo_id: str, file_path: str):
             if matched_user_id and similarity >= 0.3:
                 # handle matched user
                 pass
+```
+##  🔭 Roadmap
+- Optimize CPU-bound steps (e.g., cv2.imwrite, drawing bounding boxes)
+
+- Move image read/save operations to GPU if feasible
+
+- Add database persistence for matched similarity data (MongoDB or other)
+
+- Dockerize the service for portability
+
+- Implement CI/CD (e.g., GitHub Actions)
+
+- Add unit & integration tests
+
+- REST fallback or HTTP healthcheck endpoint
+
+

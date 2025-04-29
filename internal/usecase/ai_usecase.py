@@ -95,24 +95,26 @@ def process_photo_task(photo_id: str, file_path: str):
         t2 = time.perf_counter()
         if embeddings:
             for emb_photo_id, face_id, embedding in embeddings:
-                repository.store_kameramen_embedding(
-                    emb_photo_id, face_id, embedding)
-                matched_user_id, similarity = repository.search_similar_faces(
-                    embedding)
-                if matched_user_id and similarity >= SIMILARITY_THRESHOLD:
-                    similarity_level = get_similarity_level(similarity)
-                    new_ulid = ulid.ulid()
-                    response["user_similar"].append({
-                        "id": new_ulid,
-                        "photo_id": emb_photo_id,
-                        "user_id": matched_user_id,
-                        "similarity": similarity,
-                        "similarity_level": similarity_level,
-                        "created_at": now,
-                        "updated_at": now
-                    })
-        print(
-            f"[Time] Store embedding + similarity search: {time.perf_counter() - t2:.4f}s")
+                repository.store_kameramen_embedding(emb_photo_id, face_id, embedding)
+                
+                matched_results = repository.search_similar_faces(embedding)
+                
+                for matched_user_id, similarity in matched_results:
+                    if matched_user_id and similarity >= SIMILARITY_THRESHOLD:
+                        similarity_level = get_similarity_level(similarity)
+                        new_ulid = ulid.ulid()
+                        response["user_similar"].append({
+                            "id": new_ulid,
+                            "photo_id": emb_photo_id,
+                            "user_id": matched_user_id,
+                            "similarity": similarity,
+                            "similarity_level": similarity_level,
+                            "created_at": now,
+                            "updated_at": now
+                        })
+                        print(f"[Match] {matched_user_id=} {similarity=:.4f}")
+
+        print(f"[Time] Store embedding + similarity search: {time.perf_counter() - t2:.4f}s")
 
         t3 = time.perf_counter()
         for (x1, y1, x2, y2) in bounding_boxes:
@@ -163,6 +165,8 @@ def process_photo_task(photo_id: str, file_path: str):
 
 # @celery_app.task
 def process_facecam_task(user_id: str, file_path: str):
+    print("processing face cam")
+    
     # what to do, tanpa box,
     SIMILARITY_THRESHOLD = 0.5
     """Process file yang sudah didownload: deteksi wajah, komparasi embedding, upload hasil."""
@@ -181,6 +185,8 @@ def process_facecam_task(user_id: str, file_path: str):
             "user_id": user_id,
             "user_similar": []
         }
+
+        print("processing face cam 1")
 
         bounding_boxes, embeddings, original_image = recognizer.process_faces(
             file_path, user_id)
@@ -212,6 +218,7 @@ def process_facecam_task(user_id: str, file_path: str):
         # print(response["user_similar"])
         # repository.save_comparison_result(user_id, response["photo_matched"])
         print(f"[Time] Store embedding + similarity search: {time.perf_counter() - t2:.4f}s")
+        print("processing face cam 2")
         
         processed_facecam_ulid = ulid.ulid()
         processed_facecam = {
@@ -230,6 +237,8 @@ def process_facecam_task(user_id: str, file_path: str):
         t4 = time.perf_counter()
         grpc_response = create_user_similar_facecam(response)
         print(f"[Time] gRPC call: {time.perf_counter() - t4:.4f}s")
+        print("processing face cam 3")
+        
 
         print("[Time] Total time:", time.perf_counter() - start_total, "seconds")
         return True, response

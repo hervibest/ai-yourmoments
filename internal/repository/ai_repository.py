@@ -18,7 +18,7 @@ class VectorRepository:
         # Koneksi ke Milvus
         connections.connect("default", host="localhost", port="19530")
 
-        # Hapus koleksi jika sudah ada
+        # # # Hapus koleksi jika sudah ada
         # self.refresh_collection("kameramen_faces")
         # self.refresh_collection("face_recognition")
 
@@ -105,26 +105,44 @@ class VectorRepository:
         
         self.kameramen_collection.insert([[photo_id], [face_id], [embedding]])
         print(f"Embedding kameramen {photo_id} - {face_id} disimpan.")    
-
-    def search_similar_faces(self, embedding, top_k=1):
+        
+    def search_similar_faces(self, embedding, top_k=5, similarity_threshold=0.3):
         """
-        Mencari user_id di face_recognition yang memiliki embedding paling mirip dengan yang diberikan.
+        Mencari user_id di face_recognition yang memiliki embedding paling mirip 
+        dengan threshold cosine similarity minimal 0.3 (semakin tinggi semakin mirip).
+        
+        Returns:
+            List of tuples: [(user_id, similarity), ...]
         """
         if not utility.has_collection("face_recognition"):
             print("Koleksi face_recognition tidak ditemukan di Milvus.")
-            return None
-        
+            return []
+
         self.face_recognition_collection.load()
-        search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+
+        search_params = {
+            "metric_type": "COSINE",
+            "params": {"nprobe": 10}
+        }
+
         search_result = self.face_recognition_collection.search(
-            [embedding], "embedding", search_params, top_k, output_fields=["user_id"]
+            [embedding], 
+            "embedding", 
+            search_params, 
+            top_k, 
+            output_fields=["user_id"]
         )
 
+        similar_faces = []
+
         if search_result and len(search_result[0]) > 0:
-            best_match = search_result[0][0]
-            return best_match.entity.get("user_id"), best_match.distance
-        return None, None
-    
+            for match in search_result[0]:
+                if match.distance >= similarity_threshold:
+                    user_id = match.entity.get("user_id")
+                    similar_faces.append((user_id, match.distance))
+
+        return similar_faces
+
     def search_similar_photo(self, embedding, top_k=10):
         """Cari wajah yang mirip berdasarkan embedding"""
         print("Hitung similarity")

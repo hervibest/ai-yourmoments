@@ -6,6 +6,7 @@ from pymilvus import (
     Collection,
     utility,
 )
+import numpy as np
 
 
 class VectorRepository:
@@ -18,7 +19,7 @@ class VectorRepository:
         # Koneksi ke Milvus
         connections.connect("default", host="localhost", port="19530")
 
-        # # # Hapus koleksi jika sudah ada
+        # # # # Hapus koleksi jika sudah ada
         # self.refresh_collection("kameramen_faces")
         # self.refresh_collection("face_recognition")
 
@@ -143,42 +144,55 @@ class VectorRepository:
 
         return similar_faces
 
-    def search_similar_photo(self, embedding, top_k=10):
+    def search_similar_photo(self, embedding, top_k=50):
         """Cari wajah yang mirip berdasarkan embedding"""
-        print("Hitung similarity")
+        print("🔍 Mulai proses pencarian kemiripan wajah")
         collection_name = "kameramen_faces"
 
         # Periksa apakah koleksi tersedia
         if not utility.has_collection(collection_name):
-            print(f"Koleksi {collection_name} tidak ditemukan di Milvus.")
+            print(f"❌ Koleksi {collection_name} tidak ditemukan di Milvus.")
             return []
 
         try:
-            # Ambil koleksi dan lakukan pencarian
+            # Normalisasi embedding (wajib untuk COSINE)
+            norm = np.linalg.norm(embedding)
+            if norm == 0:
+                print("❌ Embedding bernilai nol (tidak valid)")
+                return []
+            embedding = embedding / norm
+            print(f"ℹ️ Norm embedding: {np.linalg.norm(embedding)}")
+
+            # Load koleksi
             self.kameramen_collection.load()
+            print(f"📦 Jumlah data dalam koleksi: {self.kameramen_collection.num_entities}")
 
             search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
             search_result = self.kameramen_collection.search(
-                [embedding], 
-                "embedding", 
-                search_params, 
-                top_k, 
+                [embedding],
+                "embedding",
+                search_params,
+                top_k,
                 output_fields=["photo_id", "face_id"]
             )
 
-            # Ambil hasil yang memiliki distance > 0.35
+            print("📝 Hasil pencarian mentah:")
+            for match in search_result[0]:
+                print(f"  → photo_id={match.entity.photo_id}, face_id={match.entity.face_id}, distance={match.distance}")
+
+            # Ambil hasil yang memiliki distance <= 0.1 (makin kecil makin mirip)
             filtered_results = [
                 (match.entity.photo_id, match.entity.face_id, match.distance)
                 for match in search_result[0]
-                if match.distance > 0.35
+                if match.distance > 0.3
             ]
 
-            return filtered_results  # List of tuples (photo_id, face_id, distance)
+            print(f"✅ Ditemukan {len(filtered_results)} hasil mirip (distance <= 0.1)")
+            return filtered_results
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"❌ Error saat mencari embedding: {e}")
             return []
-
 
 
     def get_profile_embedding(self, user_id):

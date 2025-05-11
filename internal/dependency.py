@@ -22,8 +22,19 @@ def get_vector_repository():
     return _vector_repository
 
 def get_photo_service_stub():
-    global _grpc_stub
-    if _grpc_stub is None:
-        channel = grpc.insecure_channel("localhost:50052")
-        _grpc_stub = photo_pb2_grpc.PhotoServiceStub(channel)
-    return _grpc_stub
+    try:
+        global _grpc_stub
+        if _grpc_stub is None:
+            target = "localhost:50052"  # Ganti sesuai alamat dan port service kamu
+            print(f"🔌 Membuat gRPC channel ke {target}")
+            channel = grpc.insecure_channel(target)
+
+            grpc.channel_ready_future(channel).result(timeout=3)  # akan raise jika timeout
+            print("✅ gRPC channel siap")
+            _grpc_stub = photo_pb2_grpc.PhotoServiceStub(channel)
+        return _grpc_stub
+        
+
+    except Exception as e:
+        print(f"❌ Gagal membuat stub gRPC: {e}")
+        raise

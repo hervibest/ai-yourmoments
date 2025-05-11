@@ -5,14 +5,19 @@ import json
 import datetime
 import ulid
 import time
-
+from typing import List
 
 from internal.config.celery_config import celery_app
 from internal.config.minio_config import minio_client, BUCKET_NAME
 from internal.services.face_recognizer_service import FaceRecognizer
 from internal.repository.ai_repository import VectorRepository
-from internal.adapter.photo_service import create_user_similar, create_user_similar_facecam
+from internal.adapter.photo_service import create_user_similar, create_user_similar_facecam, build_bulk_user_similar_request
 from internal.dependency import get_face_recognizer, get_vector_repository
+
+from internal.model.ai_model import AIBulkPhoto, AIPhoto
+
+import numpy as np
+
 
 
 class AIUseCase:
@@ -20,10 +25,10 @@ class AIUseCase:
     #     self.detector = detector
     #     self.repository = repository
 
-    def process_photo(self, photo_id: str, file_url: str):
+    def process_photo(self, photo_id: str, file_url: str, original_filename: str):
         """Push processing task to Celery worker"""
         # download_and_process_photo_task.delay(photo_id, file_url)
-        download_and_process_photo_task(photo_id, file_url)
+        download_and_process_photo_task(photo_id, file_url, original_filename)
 
         return True, ""
     
@@ -33,12 +38,56 @@ class AIUseCase:
         download_and_process_facecam_task(user_id, file_url)
 
         return True, ""
+    
+    def process_photo_bulk(self, process_bulk_photo: AIBulkPhoto, process_photo_list: List[AIPhoto]):
+        print("Accesed process_photo_bulk")
+        print(process_photo_list)
+        """Push processing task to Celery worker"""
+        # download_and_process_photo_task.delay(photo_id, file_url)
+        process_photo_bulk_usecase(process_bulk_photo, process_photo_list)
 
+        return True, ""
+
+
+def process_photo_bulk_usecase(process_bulk_photo: AIBulkPhoto, process_photo_list: List[AIPhoto]):
+    """Process banyak foto, kumpulkan hasil, lalu kirim 1x bulk gRPC"""
+    bulk_user_similar_photos = []
+    print("Accesed process_photo_bulk")
+    print(f"Total photos: {len(process_photo_list)}")
+
+    
+    print("process_photo_bulk_usecase")
+
+    for photo in process_photo_list:
+        photo_id = photo.id
+        file_url = photo.compressed_url or photo.collection_url  # fallback kalau compressed kosong
+        original_filename = photo.original_filename   # fallback kalau compressed kosong
+        
+        print(photo)
+        print(photo_id)
+        print(file_url)
+        
+
+        # Proses download dan deteksi wajah
+        success, response = download_and_process_photo_task_without_grpc(photo_id, file_url, original_filename)
+
+        if not success:
+            print(f"Failed processing {photo_id}: {response}")
+            continue  # Skip foto gagal
+
+        bulk_user_similar_photos.append({
+            "photo_detail": response["processed_photo_detail"],
+            "user_similar_photo": response["user_similar"]
+        })
+
+    # Kalau sudah semua diproses
+    grpc_response = build_bulk_user_similar_request(process_bulk_photo, bulk_user_similar_photos)
+    return grpc_response
 
 # @celery_app.task
 
 
-def download_and_process_photo_task(photo_id: str, file_url: str):
+def download_and_process_photo_task(photo_id: str, file_url: str, original_filename: str):
     print("test")
     """Download file dan simpan ke disk sementara, lalu masukkan ke queue AI worker."""
     try:
@@ -49,7 +98,7 @@ def download_and_process_photo_task(photo_id: str, file_url: str):
                 for chunk in response.iter_content(1024):
                     f.write(chunk)
 
-        process_photo_task(photo_id, save_path)
+        process_photo_task(photo_id, save_path, original_filename)
 
     except Exception as e:
         print(f"Error downloading file {photo_id}: {str(e)}")
@@ -71,8 +120,27 @@ def download_and_process_facecam_task(user_id: str, file_url: str):
         print(f"Error downloading file {user_id}: {str(e)}")
 
 
-# @celery_app.task
-def process_photo_task(photo_id: str, file_path: str):
+def download_and_process_photo_task_without_grpc(photo_id: str, file_url: str, original_filename: str):
+    print("test")
+    """Download file dan simpan ke disk sementara, lalu masukkan ke queue AI worker."""
+    try:
+        save_path = f"/tmp/{photo_id}.jpg"
+        response = requests.get(file_url, stream=True)
+        if response.status_code == 200:
+            with open(save_path, "wb") as f:
+                for chunk in response.iter_content(1024):
+                    f.write(chunk)
+
+        success, response = process_photo_without_grpc_task(photo_id, save_path, original_filename)
+        return success, response
+
+    except Exception as e:
+        return False, {"Error downloading file {photo_id}: {str(e)}"}
+  
+
+def process_photo_usecase(photo_id : str, file_path: str, original_filename: str) : 
+    print("process_photo_usecase")
+    
     SIMILARITY_THRESHOLD = 0.3
     try:
         start_total = time.perf_counter()
@@ -126,10 +194,21 @@ def process_photo_task(photo_id: str, file_path: str):
             f"[Time] Draw bounding box + save image: {time.perf_counter() - t3:.4f}s")
 
         t4 = time.perf_counter()
-        minio_filename = f"{photo_id}_processed.jpg"
+        if not os.path.exists(processed_file_path):
+            raise FileNotFoundError(f"Processed file not found: {processed_file_path}")
+
+        print("[DEBUG] Processed file path:", processed_file_path)
+        print("[DEBUG] File exists:", os.path.exists(processed_file_path))
+
+        print("[DEBUG] file_path (original file):", file_path)
+        print("[DEBUG] os.path.basename(file_path):", os.path.basename(file_path))
+
+        processed_file_name, processed_file_key = generate_file_key(photo_id, file_path, "processed", original_filename)
+
         upload_result = minio_client.fput_object(
-            BUCKET_NAME, minio_filename, processed_file_path)
-        file_with_bounding_url = f"{BUCKET_NAME}/{minio_filename}"
+            BUCKET_NAME, processed_file_key, processed_file_path)
+        file_with_bounding_url = f"{BUCKET_NAME}/{processed_file_key}"
+
         file_size = os.path.getsize(processed_file_path)
         print(f"[Time] Upload to MinIO: {time.perf_counter() - t4:.4f}s")
 
@@ -137,14 +216,17 @@ def process_photo_task(photo_id: str, file_path: str):
         processed_photo_detail = {
             "id": processed_photo_ulid,
             "photo_id": photo_id,
-            "file_name": minio_filename,
-            "file_key": minio_filename,
+            "file_name": processed_file_name,
+            "file_key": processed_file_key,
             "size": file_size,
             "url": file_with_bounding_url,
             "your_moments_type": "YOU",
             "created_at": now,
             "updated_at": now
         }
+        print("🧪 processed_photo_detail =", processed_photo_detail)
+        print("🧪 type =", type(processed_photo_detail))
+
         response["processed_photo_detail"] = processed_photo_detail
 
         t5 = time.perf_counter()
@@ -153,10 +235,18 @@ def process_photo_task(photo_id: str, file_path: str):
         print(f"[Time] Remove temp files: {time.perf_counter() - t5:.4f}s")
 
         t6 = time.perf_counter()
-        grpc_response = create_user_similar(response)
         print(f"[Time] gRPC call: {time.perf_counter() - t6:.4f}s")
 
         print("[Time] Total time:", time.perf_counter() - start_total, "seconds")
+        return response
+    except Exception as e:
+        return False, {"error": f"Error processing file: {str(e)}"}
+
+# @celery_app.task
+def process_photo_task(photo_id: str, file_path: str, original_filename: str):
+    try:
+        response = process_photo_usecase(photo_id, file_path, original_filename)
+        grpc_response = create_user_similar(response)
         return True, response
 
     except Exception as e:
@@ -164,11 +254,11 @@ def process_photo_task(photo_id: str, file_path: str):
 
 
 # @celery_app.task
-def process_facecam_task(user_id: str, file_path: str):
+def process_facecam_usecase(user_id: str, file_path: str):
     print("processing face cam")
     
     # what to do, tanpa box,
-    SIMILARITY_THRESHOLD = 0.5
+    SIMILARITY_THRESHOLD = 0.3
     """Process file yang sudah didownload: deteksi wajah, komparasi embedding, upload hasil."""
     try:
         start_total = time.perf_counter()
@@ -185,22 +275,33 @@ def process_facecam_task(user_id: str, file_path: str):
             "user_id": user_id,
             "user_similar": []
         }
-
-        print("processing face cam 1")
-
-        bounding_boxes, embeddings, original_image = recognizer.process_faces(
-            file_path, user_id)
+        bounding_boxes, embeddings, original_image = recognizer.process_faces(file_path, user_id)
         t2 = time.perf_counter()
+
         if embeddings:
             for user_id, face_id, embedding in embeddings:
                 try:
-                    repository.store_profile_embedding(user_id, embedding)
-                    print(f"Process: user_id={user_id}")
+                    print(f"\n📌 Start process face_id={face_id}, user_id={user_id}")
+                    
+                    norm_before = np.linalg.norm(embedding)
+                    print(f"🔍 Norm sebelum simpan: {norm_before}")
+                    print(f"📷 Embedding preview: {embedding[:5]}")
 
+                    repository.store_profile_embedding(user_id, embedding)
+
+                    print(f"✅ Simpan embedding ke koleksi")
+
+                    # Test manual similarity terhadap salah satu entry dulu (bisa kamu hardcode sementara)
+                    print("⏳ Cari wajah serupa...")
                     results = repository.search_similar_photo(embedding)
 
-                    if results:
+                    if not results:
+                        print("⚠️ Tidak ada hasil serupa")
+                    else:
+                        print(f"✅ {len(results)} hasil ditemukan")
                         for matched_photo_id, matched_face_id, similarity in results[:5]:
+                            print(f"  → Matched photo_id={matched_photo_id}, face_id={matched_face_id}, similarity={similarity}")
+
                             if similarity >= SIMILARITY_THRESHOLD:
                                 similarity_level = get_similarity_level(similarity)
                                 new_ulid = ulid.ulid()
@@ -213,10 +314,10 @@ def process_facecam_task(user_id: str, file_path: str):
                                     "created_at": now,
                                     "updated_at": now
                                 })
+
                 except Exception as e:
                     print(f"❌ Error processing user_id {user_id}: {e}")
-        # print(response["user_similar"])
-        # repository.save_comparison_result(user_id, response["photo_matched"])
+
         print(f"[Time] Store embedding + similarity search: {time.perf_counter() - t2:.4f}s")
         print("processing face cam 2")
         
@@ -229,30 +330,75 @@ def process_facecam_task(user_id: str, file_path: str):
         }
         response["processed_facecam"] = processed_facecam
         
+        print(response)
+        
                 
         t3 = time.perf_counter()
         os.remove(file_path)
         print(f"[Time] Remove temp files: {time.perf_counter() - t3:.4f}s")
         
-        t4 = time.perf_counter()
-        grpc_response = create_user_similar_facecam(response)
-        print(f"[Time] gRPC call: {time.perf_counter() - t4:.4f}s")
         print("processing face cam 3")
-        
 
         print("[Time] Total time:", time.perf_counter() - start_total, "seconds")
         return True, response
 
+    except Exception as e:
+        return False, {"error": f"Error processing file: {str(e)}"}
+    
+
+
+# @celery_app.task
+def process_facecam_task(user_id: str, file_path: str):
+    try:
+        success, response_data = process_facecam_usecase(user_id, file_path)
+        print("PROCESS FACECAM TASK")
+
+        if success:
+            grpc_response = create_user_similar_facecam(response_data)
+        else:
+            print("❌ Facecam processing gagal:", response_data.get("error"))
 
 
     except Exception as e:
         return False, {"error": f"Error processing file: {str(e)}"}
+    
+
+# @celery_app.task
+def process_photo_without_grpc_task(photo_id: str, file_path: str, original_filename: str):
+    print("process_photo_without_grpc_task")
+    
+    try:
+        response = process_photo_usecase(photo_id, file_path, original_filename)
+        return True, response
+
+    except Exception as e:
+        return False, {"error": f"Error processing file: {str(e)}"}
+
+
+def generate_file_key(photo_id: str, file_path: str, file_type: str, original_filename: str) -> tuple[str, str]:
+    """
+    Generate standardized file_name and file_key for original/compressed/processed photos.
+
+    Returns: (file_name, file_key)
+    """
+    name, ext = os.path.splitext(original_filename)  # ("DSC_3661", ".jpg")
+
+    new_ulid = str(ulid.ulid())
+    file_name = f"{name}_{new_ulid}{ext}"
+    file_key = f"photo/{photo_id}/{file_type}/{file_name}"
+
+    return file_name, file_key
+
+
 
 def get_similarity_level(similarity):
-    if 0.35 <= similarity < 0.38: return 1
-    elif 0.38 <= similarity < 0.41: return 2
-    elif 0.41 <= similarity < 0.44: return 3
-    elif 0.44 <= similarity < 0.47: return 4
-    elif 0.47 <= similarity < 0.50: return 5
-    elif similarity >= 0.50: return 6
-    else: return ""       
+    if 0.30 <= similarity < 0.32: return 1
+    elif 0.32 <= similarity < 0.34: return 2
+    elif 0.34 <= similarity < 0.36: return 3
+    elif 0.36 <= similarity < 0.38: return 4
+    elif 0.38 <= similarity < 0.40: return 5
+    elif 0.40 <= similarity < 0.43: return 6
+    elif 0.43 <= similarity < 0.46: return 7
+    elif 0.46 <= similarity < 0.50: return 8
+    elif similarity >= 0.50: return 9
+    else: return ""

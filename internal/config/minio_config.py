@@ -5,7 +5,7 @@ import os
 MINIO_ENDPOINT = "127.0.0.1:9000"
 MINIO_ACCESS_KEY = "2XUR7xvdJXRjb6TJZIPf"
 MINIO_SECRET_KEY = "nsbOGZ1SbH54dIKzRJyNlF3ni1EQIeVWd6pPLHru"
-BUCKET_NAME = "processed-images"
+BUCKET_NAME = "yourmoments"
 REGION = "ind-yogyakarta"
 
 try:

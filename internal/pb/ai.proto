@@ -2,16 +2,18 @@ syntax = "proto3";
 
 package ai;
 
-option go_package = ".pkg/pb";
+option go_package = ".pkg/ai;aipb";
 
 service AiService{
   rpc ProcessPhoto(ProcessPhotoRequest) returns (ProcessPhotoResponse);
   rpc ProcessFacecam(ProcessFacecamRequest) returns (ProcessFacecamResponse);
+  rpc ProcessBulkPhoto(ProcessBulkPhotoRequest) returns (ProcessBulkPhotoResponse);
 }
 
 message ProcessPhotoRequest{
   string id = 1;
   string url = 2;
+  string original_filename = 3;
 }
 
 message ProcessPhotoResponse{
@@ -25,6 +27,28 @@ message ProcessFacecamRequest{
 }
 
 message ProcessFacecamResponse{
+  int64 status = 1;
+  string error = 2;
+}
+
+message AIBulkPhoto {
+  string id = 1;
+  string creator_id = 2;
+}
+
+message AIPhoto {
+  string id = 1;
+  string compressed_url = 5;
+  string collection_url = 6;
+  string original_filename = 7;
+}
+
+message ProcessBulkPhotoRequest {
+  AIBulkPhoto process_bulk_ai = 1;
+  repeated AIPhoto process_ai = 2;
+}
+
+message ProcessBulkPhotoResponse{
   int64 status = 1;
   string error = 2;
 }

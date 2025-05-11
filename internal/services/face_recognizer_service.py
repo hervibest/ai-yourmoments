@@ -10,7 +10,11 @@ class FaceRecognizer:
         """
         Kelas untuk mendeteksi wajah dan mengekstrak embedding.
         """
-        self.app = FaceAnalysis(name=model_name)
+        self.app = FaceAnalysis(
+            name='buffalo_l',
+            providers=['CUDAExecutionProvider'],  # <--- pastikan ini dipakai
+        )
+        
         self.app.prepare(ctx_id=0) # Gunakan CPU dulu untuk testing
         print("face recog inits")
         

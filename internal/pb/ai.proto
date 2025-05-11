@@ -12,8 +12,9 @@ service AiService{
 
 message ProcessPhotoRequest{
   string id = 1;
-  string url = 2;
-  string original_filename = 3;
+  string creator_id = 2;
+  string url = 3;
+  string original_filename = 4;
 }
 
 message ProcessPhotoResponse{
@@ -23,7 +24,8 @@ message ProcessPhotoResponse{
 
 message ProcessFacecamRequest{
   string id = 1;
-  string url = 2;
+  string creator_id = 2;
+  string url = 3;
 }
 
 message ProcessFacecamResponse{

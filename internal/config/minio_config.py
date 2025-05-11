@@ -1,12 +1,18 @@
-from minio import Minio
 import os
+from minio import Minio
+from dotenv import load_dotenv
+from pathlib import Path
 
-# Konfigurasi MinIO
-MINIO_ENDPOINT = "127.0.0.1:9000"
-MINIO_ACCESS_KEY = "2XUR7xvdJXRjb6TJZIPf"
-MINIO_SECRET_KEY = "nsbOGZ1SbH54dIKzRJyNlF3ni1EQIeVWd6pPLHru"
-BUCKET_NAME = "yourmoments"
-REGION = "ind-yogyakarta"
+# Muat .env dari root direktori (naik 2 folder dari file ini)
+env_path = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(dotenv_path=env_path)
+
+# Ambil dari environment
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+BUCKET_NAME = os.getenv("BUCKET_NAME")
+REGION = os.getenv("REGION")
 
 try:
     # Inisialisasi MinIO client
@@ -14,7 +20,7 @@ try:
         MINIO_ENDPOINT,
         access_key=MINIO_ACCESS_KEY,
         secret_key=MINIO_SECRET_KEY,
-        secure=False,  # Set True jika menggunakan HTTPS
+        secure=False,
         region=REGION
     )
 
@@ -30,4 +36,4 @@ try:
         print(f"✅ Bucket '{BUCKET_NAME}' sudah ada.")
 
 except Exception as e:
-    print(f"Gagal terhubung ke MinIO: {e}")
+    print(f"❌ Gagal terhubung ke MinIO: {e}")

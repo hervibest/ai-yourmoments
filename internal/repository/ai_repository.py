@@ -34,6 +34,11 @@ class VectorRepository:
                     is_primary=True,
                 ),
                 FieldSchema(
+                    name="creator_id",           # Metadata tambahan
+                    dtype=DataType.VARCHAR,
+                    max_length=50,
+                ),
+                FieldSchema(
                     name="face_id",
                     dtype=DataType.INT64
                 ),
@@ -55,6 +60,11 @@ class VectorRepository:
                     is_primary=True,
                 ),
                 FieldSchema(
+                    name="creator_id",           # Metadata tambahan
+                    dtype=DataType.VARCHAR,
+                    max_length=50,
+                ),
+                FieldSchema(
                     name="embedding",
                     dtype=DataType.FLOAT_VECTOR,
                     dim=512
@@ -70,7 +80,8 @@ class VectorRepository:
         }
 
         self.kameramen_collection.create_index("embedding", index_params)
-        self.face_recognition_collection.create_index("embedding", index_params)
+        self.face_recognition_collection.create_index(
+            "embedding", index_params)
 
         print("Indeks berhasil dibuat.")
 
@@ -90,28 +101,38 @@ class VectorRepository:
         collection = Collection(name, schema)
         return collection
 
-    def store_profile_embedding(self, user_id, embedding):
+    def store_profile_embedding(self, user_id, creator_id, embedding):
         """
         Simpan embedding wajah dari foto kameramen.
         """
         self.face_recognition_collection.load()
-        self.face_recognition_collection.insert([[user_id], [embedding]])
-        print(f"Embedding profile {user_id} - disimpan.")
+        self.face_recognition_collection.insert([{
+            "user_id": user_id,             # str
+            "creator_id": creator_id,       # str
+            "embedding": embedding          # list[float] atau numpy.ndarray
+        }])
+        print(f"Embedding profile {user_id} dengan creator id {creator_id} - disimpan.")
 
-    def store_kameramen_embedding(self, photo_id, face_id, embedding):
+    def store_kameramen_embedding(self, photo_id, creator_id, face_id, embedding):
         """
         Simpan embedding wajah dari foto kameramen.
         """
         self.kameramen_collection.load()
-        
-        self.kameramen_collection.insert([[photo_id], [face_id], [embedding]])
-        print(f"Embedding kameramen {photo_id} - {face_id} disimpan.")    
-        
-    def search_similar_faces(self, embedding, top_k=5, similarity_threshold=0.3):
+
+        self.kameramen_collection.insert([[photo_id], [creator_id], [face_id], [embedding]])
+        print(f"Embedding kameramen {photo_id} - {face_id} disimpan.")
+
+    def search_similar_faces(self, embedding, creator_id_to_exclude, top_k=5, similarity_threshold=0.3):
         """
-        Mencari user_id di face_recognition yang memiliki embedding paling mirip 
-        dengan threshold cosine similarity minimal 0.3 (semakin tinggi semakin mirip).
-        
+        Mencari user_id di face_recognition yang memiliki embedding paling mirip,
+        dengan threshold cosine similarity minimal 0.3, dan mengabaikan embedding milik creator_id tertentu.
+
+        Args:
+            embedding (list): Embedding wajah
+            creator_id_to_exclude (str): Creator ID yang ingin dikecualikan dari hasil
+            top_k (int): Jumlah hasil teratas yang diambil
+            similarity_threshold (float): Threshold cosine similarity (semakin tinggi semakin mirip)
+
         Returns:
             List of tuples: [(user_id, similarity), ...]
         """
@@ -126,12 +147,16 @@ class VectorRepository:
             "params": {"nprobe": 10}
         }
 
+        # Gunakan expr untuk menyaring berdasarkan creator_id
+        expr = f'creator_id != "{creator_id_to_exclude}"'
+
         search_result = self.face_recognition_collection.search(
-            [embedding], 
-            "embedding", 
-            search_params, 
-            top_k, 
-            output_fields=["user_id"]
+            [embedding],
+            "embedding",
+            search_params,
+            top_k,
+            expr=expr,
+            output_fields=["user_id", "creator_id"]
         )
 
         similar_faces = []
@@ -144,8 +169,9 @@ class VectorRepository:
 
         return similar_faces
 
-    def search_similar_photo(self, embedding, top_k=50):
-        """Cari wajah yang mirip berdasarkan embedding"""
+
+    def search_similar_photo(self, embedding, creator_id_to_exclude, top_k=50):
+        """Cari wajah yang mirip berdasarkan embedding, tanpa menyamakan dengan foto dari creator yang sama"""
         print("🔍 Mulai proses pencarian kemiripan wajah")
         collection_name = "kameramen_faces"
 
@@ -168,26 +194,32 @@ class VectorRepository:
             print(f"📦 Jumlah data dalam koleksi: {self.kameramen_collection.num_entities}")
 
             search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+
+            # Tambahkan expr untuk mengecualikan creator_id tertentu
+            expr = f'creator_id != "{creator_id_to_exclude}"'
+
             search_result = self.kameramen_collection.search(
                 [embedding],
                 "embedding",
                 search_params,
                 top_k,
-                output_fields=["photo_id", "face_id"]
+                expr=expr,
+                output_fields=["photo_id", "face_id", "creator_id"]
             )
 
             print("📝 Hasil pencarian mentah:")
             for match in search_result[0]:
-                print(f"  → photo_id={match.entity.photo_id}, face_id={match.entity.face_id}, distance={match.distance}")
+                print(
+                    f"  → photo_id={match.entity.photo_id}, face_id={match.entity.face_id}, creator_id={match.entity.creator_id}, distance={match.distance}")
 
-            # Ambil hasil yang memiliki distance <= 0.1 (makin kecil makin mirip)
+            # Ambil hasil yang memiliki distance > 0.3 (semakin tinggi semakin mirip)
             filtered_results = [
                 (match.entity.photo_id, match.entity.face_id, match.distance)
                 for match in search_result[0]
                 if match.distance > 0.3
             ]
 
-            print(f"✅ Ditemukan {len(filtered_results)} hasil mirip (distance <= 0.1)")
+            print(f"✅ Ditemukan {len(filtered_results)} hasil mirip (distance > 0.3)")
             return filtered_results
 
         except Exception as e:
@@ -199,11 +231,11 @@ class VectorRepository:
         """
         Ambil kembali embedding berdasarkan user_id.
         """
-            # Pastikan koleksi telah dimuat sebelum melakukan query
+        # Pastikan koleksi telah dimuat sebelum melakukan query
         self.face_recognition_collection.load()
-    
+
         query_result = self.face_recognition_collection.query(
-        expr=f"user_id == '{user_id}'",  # Tambahkan tanda kutip
+            expr=f"user_id == '{user_id}'",  # Tambahkan tanda kutip
             output_fields=["embedding"]
         )
         print(f"Debug: Query hasil untuk user_id {user_id}: {query_result}")

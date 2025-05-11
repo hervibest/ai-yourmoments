@@ -13,10 +13,14 @@ def create_user_similar(response):
     Fungsi untuk memanggil PhotoService menggunakan gRPC dengan data response
     dari proses photo task.
     """
+    
+    print("CREAT USER SIMILAR GET STUB")
     stub = get_photo_service_stub()
-
+    
+    print("GONNA GET FROM DATAS")
     # Konversi data processed_photo_detail ke message PhotoDetail
     processed_detail = response.get("processed_photo_detail", {})
+    print("CREAT USER SIMILAR")
 
     def iso_to_timestamp(iso_str):
         dt = datetime.datetime.fromisoformat(iso_str)
@@ -66,7 +70,11 @@ def create_user_similar(response):
         user_similar_photo=user_similar_photo_messages
     )
 
+    print("GONNA SENDD ...")
+
     grpc_response = stub.CreateUserSimilar(request)
+    
+    print("GRPC SEND ...")
     return grpc_response
 
 def create_user_similar_facecam(response):

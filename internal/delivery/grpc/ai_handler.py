@@ -8,14 +8,14 @@ class AIHandler(ai_pb2_grpc.AiServiceServicer):
 
     def ProcessPhoto(self, request, context):
         """Client hanya menerima status sukses, sementara pemrosesan berjalan async"""
-        success, error_message = self.ai_usecase.process_photo(request.id, request.url, request.original_filename)
+        success, error_message = self.ai_usecase.process_photo(request.id, request.creator_id, request.url, request.original_filename)
         # Misalnya: status 1 untuk sukses, 0 untuk gagal
         status = 200 if success else 500
         return ai_pb2.ProcessPhotoResponse(status=status, error=error_message)
 
     def ProcessFacecam(self, request, context):
         """Client hanya menerima status sukses, sementara pemrosesan berjalan async"""
-        success, error_message = self.ai_usecase.process_facecam(request.id, request.url)
+        success, error_message = self.ai_usecase.process_facecam(request.id, request.creator_id, request.url)
         status = 200 if success else 500
         return ai_pb2.ProcessFacecamResponse(status=status, error=error_message)
     

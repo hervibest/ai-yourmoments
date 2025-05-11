@@ -3,11 +3,12 @@ import cv2
 import requests
 import json
 import datetime
-import ulid
+from ulid import ULID
 import time
 from typing import List
+from minio.error import S3Error
 
-from internal.config.celery_config import celery_app
+# from internal.config.celery_config import celery_app
 from internal.config.minio_config import minio_client, BUCKET_NAME
 from internal.services.face_recognizer_service import FaceRecognizer
 from internal.repository.ai_repository import VectorRepository
@@ -25,17 +26,17 @@ class AIUseCase:
     #     self.detector = detector
     #     self.repository = repository
 
-    def process_photo(self, photo_id: str, file_url: str, original_filename: str):
+    def process_photo(self, photo_id: str, creator_id: str, file_url: str, original_filename: str):
         """Push processing task to Celery worker"""
         # download_and_process_photo_task.delay(photo_id, file_url)
-        download_and_process_photo_task(photo_id, file_url, original_filename)
+        download_and_process_photo_task(photo_id, creator_id, file_url, original_filename)
 
         return True, ""
     
-    def process_facecam(self, user_id: str, file_url: str):
+    def process_facecam(self, user_id: str, creator_id: str, file_url: str):
         """Push processing task to Celery worker"""
         # download_and_process_photo_task.delay(photo_id, file_url)
-        download_and_process_facecam_task(user_id, file_url)
+        download_and_process_facecam_task(user_id, creator_id, file_url)
 
         return True, ""
     
@@ -69,7 +70,7 @@ def process_photo_bulk_usecase(process_bulk_photo: AIBulkPhoto, process_photo_li
         
 
         # Proses download dan deteksi wajah
-        success, response = download_and_process_photo_task_without_grpc(photo_id, file_url, original_filename)
+        success, response = download_and_process_photo_task_without_grpc(photo_id, process_bulk_photo.creator_id, file_url, original_filename)
 
         if not success:
             print(f"Failed processing {photo_id}: {response}")
@@ -87,7 +88,7 @@ def process_photo_bulk_usecase(process_bulk_photo: AIBulkPhoto, process_photo_li
 # @celery_app.task
 
 
-def download_and_process_photo_task(photo_id: str, file_url: str, original_filename: str):
+def download_and_process_photo_task(photo_id: str, creator_id: str, file_url: str, original_filename: str):
     print("test")
     """Download file dan simpan ke disk sementara, lalu masukkan ke queue AI worker."""
     try:
@@ -98,12 +99,12 @@ def download_and_process_photo_task(photo_id: str, file_url: str, original_filen
                 for chunk in response.iter_content(1024):
                     f.write(chunk)
 
-        process_photo_task(photo_id, save_path, original_filename)
+        process_photo_task(photo_id, creator_id, save_path, original_filename)
 
     except Exception as e:
         print(f"Error downloading file {photo_id}: {str(e)}")
         
-def download_and_process_facecam_task(user_id: str, file_url: str):
+def download_and_process_facecam_task(user_id: str, creator_id: str, file_url: str):
     print("test facecam")
     """Download file dan simpan ke disk sementara, lalu masukkan ke queue AI worker."""
     try:
@@ -114,13 +115,13 @@ def download_and_process_facecam_task(user_id: str, file_url: str):
                 for chunk in response.iter_content(1024):
                     f.write(chunk)
 
-        process_facecam_task(user_id, save_path)
+        process_facecam_task(user_id, creator_id, save_path)
 
     except Exception as e:
         print(f"Error downloading file {user_id}: {str(e)}")
 
 
-def download_and_process_photo_task_without_grpc(photo_id: str, file_url: str, original_filename: str):
+def download_and_process_photo_task_without_grpc(photo_id: str, creator_id: str, file_url: str, original_filename: str):
     print("test")
     """Download file dan simpan ke disk sementara, lalu masukkan ke queue AI worker."""
     try:
@@ -131,14 +132,14 @@ def download_and_process_photo_task_without_grpc(photo_id: str, file_url: str, o
                 for chunk in response.iter_content(1024):
                     f.write(chunk)
 
-        success, response = process_photo_without_grpc_task(photo_id, save_path, original_filename)
+        success, response = process_photo_without_grpc_task(photo_id, creator_id, save_path, original_filename)
         return success, response
 
     except Exception as e:
         return False, {"Error downloading file {photo_id}: {str(e)}"}
   
 
-def process_photo_usecase(photo_id : str, file_path: str, original_filename: str) : 
+def process_photo_usecase(photo_id: str,  creator_id: str, file_path: str, original_filename: str) : 
     print("process_photo_usecase")
     
     SIMILARITY_THRESHOLD = 0.3
@@ -163,14 +164,14 @@ def process_photo_usecase(photo_id : str, file_path: str, original_filename: str
         t2 = time.perf_counter()
         if embeddings:
             for emb_photo_id, face_id, embedding in embeddings:
-                repository.store_kameramen_embedding(emb_photo_id, face_id, embedding)
+                repository.store_kameramen_embedding(emb_photo_id, creator_id, face_id, embedding)
                 
-                matched_results = repository.search_similar_faces(embedding)
+                matched_results = repository.search_similar_faces(embedding, creator_id)
                 
                 for matched_user_id, similarity in matched_results:
                     if matched_user_id and similarity >= SIMILARITY_THRESHOLD:
                         similarity_level = get_similarity_level(similarity)
-                        new_ulid = ulid.ulid()
+                        new_ulid = ULID()
                         response["user_similar"].append({
                             "id": new_ulid,
                             "photo_id": emb_photo_id,
@@ -203,16 +204,35 @@ def process_photo_usecase(photo_id : str, file_path: str, original_filename: str
         print("[DEBUG] file_path (original file):", file_path)
         print("[DEBUG] os.path.basename(file_path):", os.path.basename(file_path))
 
-        processed_file_name, processed_file_key = generate_file_key(photo_id, file_path, "processed", original_filename)
+        try:
+            processed_file_name, processed_file_key = generate_file_key(
+                photo_id, file_path, "processed", original_filename)
+        except ValueError as e:
+            print(f"[ERROR] ValueError saat generate_file_key: {e}")
+            processed_file_name, processed_file_key = None, None
+        except TypeError as e:
+            print(f"[ERROR] TypeError saat generate_file_key: {e}")
+            processed_file_name, processed_file_key = None, None
+        except Exception as e:
+            print(f"[ERROR] Unexpected error saat generate_file_key: {e}")
+            processed_file_name, processed_file_key = None, None
 
-        upload_result = minio_client.fput_object(
-            BUCKET_NAME, processed_file_key, processed_file_path)
-        file_with_bounding_url = f"{BUCKET_NAME}/{processed_file_key}"
+        try:
+            upload_result = minio_client.fput_object(
+                BUCKET_NAME, processed_file_key, processed_file_path)
+            file_with_bounding_url = f"{BUCKET_NAME}/{processed_file_key}"
+            print("FILE URL : " + file_with_bounding_url)
 
-        file_size = os.path.getsize(processed_file_path)
-        print(f"[Time] Upload to MinIO: {time.perf_counter() - t4:.4f}s")
+            file_size = os.path.getsize(processed_file_path)
+            print(f"[Time] Upload to MinIO: {time.perf_counter() - t4:.4f}s")
+        except S3Error as e:
+            print(f"[ERROR] Failed to upload to MinIO: {e}")
+        except FileNotFoundError:
+            print(f"[ERROR] Processed file not found: {processed_file_path}")
+        except Exception as e:
+            print(f"[ERROR] Unexpected error during upload to MinIO: {e}")
 
-        processed_photo_ulid = ulid.ulid()
+        processed_photo_ulid = ULID()
         processed_photo_detail = {
             "id": processed_photo_ulid,
             "photo_id": photo_id,
@@ -243,9 +263,10 @@ def process_photo_usecase(photo_id : str, file_path: str, original_filename: str
         return False, {"error": f"Error processing file: {str(e)}"}
 
 # @celery_app.task
-def process_photo_task(photo_id: str, file_path: str, original_filename: str):
+def process_photo_task(photo_id: str, creator_id: str, file_path: str, original_filename: str):
     try:
-        response = process_photo_usecase(photo_id, file_path, original_filename)
+        response = process_photo_usecase(photo_id, creator_id, file_path, original_filename)
+        print("Gonna send to GRPC")
         grpc_response = create_user_similar(response)
         return True, response
 
@@ -254,7 +275,7 @@ def process_photo_task(photo_id: str, file_path: str, original_filename: str):
 
 
 # @celery_app.task
-def process_facecam_usecase(user_id: str, file_path: str):
+def process_facecam_usecase(user_id: str, creator_id: str, file_path: str):
     print("processing face cam")
     
     # what to do, tanpa box,
@@ -287,13 +308,13 @@ def process_facecam_usecase(user_id: str, file_path: str):
                     print(f"🔍 Norm sebelum simpan: {norm_before}")
                     print(f"📷 Embedding preview: {embedding[:5]}")
 
-                    repository.store_profile_embedding(user_id, embedding)
+                    repository.store_profile_embedding(user_id, creator_id, embedding )
 
                     print(f"✅ Simpan embedding ke koleksi")
 
                     # Test manual similarity terhadap salah satu entry dulu (bisa kamu hardcode sementara)
                     print("⏳ Cari wajah serupa...")
-                    results = repository.search_similar_photo(embedding)
+                    results = repository.search_similar_photo(embedding, creator_id)
 
                     if not results:
                         print("⚠️ Tidak ada hasil serupa")
@@ -304,7 +325,7 @@ def process_facecam_usecase(user_id: str, file_path: str):
 
                             if similarity >= SIMILARITY_THRESHOLD:
                                 similarity_level = get_similarity_level(similarity)
-                                new_ulid = ulid.ulid()
+                                new_ulid = ULID()
                                 response["user_similar"].append({
                                     "id": new_ulid,
                                     "photo_id": matched_photo_id,
@@ -321,7 +342,7 @@ def process_facecam_usecase(user_id: str, file_path: str):
         print(f"[Time] Store embedding + similarity search: {time.perf_counter() - t2:.4f}s")
         print("processing face cam 2")
         
-        processed_facecam_ulid = ulid.ulid()
+        processed_facecam_ulid = ULID()
         processed_facecam = {
             "id": processed_facecam_ulid,
             "user_id": user_id,
@@ -348,9 +369,9 @@ def process_facecam_usecase(user_id: str, file_path: str):
 
 
 # @celery_app.task
-def process_facecam_task(user_id: str, file_path: str):
+def process_facecam_task(user_id: str, creator_id: str, file_path: str):
     try:
-        success, response_data = process_facecam_usecase(user_id, file_path)
+        success, response_data = process_facecam_usecase(user_id, creator_id, file_path)
         print("PROCESS FACECAM TASK")
 
         if success:
@@ -364,11 +385,11 @@ def process_facecam_task(user_id: str, file_path: str):
     
 
 # @celery_app.task
-def process_photo_without_grpc_task(photo_id: str, file_path: str, original_filename: str):
+def process_photo_without_grpc_task(photo_id: str, creator_id: str, file_path: str, original_filename: str):
     print("process_photo_without_grpc_task")
     
     try:
-        response = process_photo_usecase(photo_id, file_path, original_filename)
+        response = process_photo_usecase(photo_id, creator_id, file_path, original_filename)
         return True, response
 
     except Exception as e:
@@ -381,12 +402,13 @@ def generate_file_key(photo_id: str, file_path: str, file_type: str, original_fi
 
     Returns: (file_name, file_key)
     """
+    print("FILE original name : " + original_filename)
     name, ext = os.path.splitext(original_filename)  # ("DSC_3661", ".jpg")
 
-    new_ulid = str(ulid.ulid())
+    new_ulid = str(ULID())
     file_name = f"{name}_{new_ulid}{ext}"
     file_key = f"photo/{photo_id}/{file_type}/{file_name}"
-
+    print("FILE original name : " + file_name)
     return file_name, file_key
 
 

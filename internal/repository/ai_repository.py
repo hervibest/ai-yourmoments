@@ -9,19 +9,28 @@ from pymilvus import (
 import numpy as np
 
 
+import os
+from pathlib import Path
+import time
+
 class VectorRepository:
     def __init__(self):
-        """
-        Repository untuk menyimpan embedding wajah ke dua koleksi di Milvus.
-        """
-        print("AI Init - Refresh Collections")
+        MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
+        MILVUS_PORT = os.getenv("MILVUS_PORT", "19530")
 
-        # Koneksi ke Milvus
-        connections.connect("default", host="localhost", port="19530")
+        for _ in range(10):  # Coba maksimal 10 kali
+            try:
+                connections.connect("default", host=MILVUS_HOST, port=MILVUS_PORT)
+                print(f"✅ Connected to Milvus at {MILVUS_HOST}:{MILVUS_PORT}")
+                break
+            except Exception as e:
+                print(f"⏳ Waiting for Milvus... ({e})")
+                time.sleep(5)
+        else:
+            raise RuntimeError("❌ Gagal connect ke Milvus setelah 10 kali percobaan")
 
-        # # # # Hapus koleksi jika sudah ada
-        # self.refresh_collection("kameramen_faces")
-        # self.refresh_collection("face_recognition")
+        self.refresh_collection("kameramen_faces")
+        self.refresh_collection("face_recognition")
 
         # Buat ulang koleksi
         self.kameramen_collection = self.create_collection(
@@ -105,18 +114,18 @@ class VectorRepository:
         """
         Simpan embedding wajah dari foto kameramen.
         """
+        print("INI ADALAH STORE PROFILE EMBEDING CREATOR ID: " + creator_id)
+
         self.face_recognition_collection.load()
-        self.face_recognition_collection.insert([{
-            "user_id": user_id,             # str
-            "creator_id": creator_id,       # str
-            "embedding": embedding          # list[float] atau numpy.ndarray
-        }])
+        self.face_recognition_collection.insert([[user_id], [creator_id], [embedding]])
         print(f"Embedding profile {user_id} dengan creator id {creator_id} - disimpan.")
 
     def store_kameramen_embedding(self, photo_id, creator_id, face_id, embedding):
         """
         Simpan embedding wajah dari foto kameramen.
         """
+        print("INI ADALAH STORE KAMERA EMBEDING CREATOR ID: " + creator_id)
+
         self.kameramen_collection.load()
 
         self.kameramen_collection.insert([[photo_id], [creator_id], [face_id], [embedding]])
@@ -148,6 +157,7 @@ class VectorRepository:
         }
 
         # Gunakan expr untuk menyaring berdasarkan creator_id
+        print("INI ADALAH EXCLUDE CREATOR ID SERACH SIMILAR FACES : " + creator_id_to_exclude)
         expr = f'creator_id != "{creator_id_to_exclude}"'
 
         search_result = self.face_recognition_collection.search(
@@ -194,6 +204,8 @@ class VectorRepository:
             print(f"📦 Jumlah data dalam koleksi: {self.kameramen_collection.num_entities}")
 
             search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+
+            print("INI ADALAH EXCLUDE CREATOR ID SERACH SIMILAR SIMILAR PHOTO : " + creator_id_to_exclude)
 
             # Tambahkan expr untuk mengecualikan creator_id tertentu
             expr = f'creator_id != "{creator_id_to_exclude}"'

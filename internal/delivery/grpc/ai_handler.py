@@ -15,6 +15,7 @@ class AIHandler(ai_pb2_grpc.AiServiceServicer):
 
     def ProcessFacecam(self, request, context):
         """Client hanya menerima status sukses, sementara pemrosesan berjalan async"""
+        print("request masuk creator id ", request.creator_id)
         success, error_message = self.ai_usecase.process_facecam(request.id, request.creator_id, request.url)
         status = 200 if success else 500
         return ai_pb2.ProcessFacecamResponse(status=status, error=error_message)

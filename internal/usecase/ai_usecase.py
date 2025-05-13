@@ -171,7 +171,7 @@ def process_photo_usecase(photo_id: str,  creator_id: str, file_path: str, origi
                 for matched_user_id, similarity in matched_results:
                     if matched_user_id and similarity >= SIMILARITY_THRESHOLD:
                         similarity_level = get_similarity_level(similarity)
-                        new_ulid = ULID()
+                        new_ulid =str(ULID())
                         response["user_similar"].append({
                             "id": new_ulid,
                             "photo_id": emb_photo_id,
@@ -232,7 +232,7 @@ def process_photo_usecase(photo_id: str,  creator_id: str, file_path: str, origi
         except Exception as e:
             print(f"[ERROR] Unexpected error during upload to MinIO: {e}")
 
-        processed_photo_ulid = ULID()
+        processed_photo_ulid =str(ULID())
         processed_photo_detail = {
             "id": processed_photo_ulid,
             "photo_id": photo_id,
@@ -325,7 +325,7 @@ def process_facecam_usecase(user_id: str, creator_id: str, file_path: str):
 
                             if similarity >= SIMILARITY_THRESHOLD:
                                 similarity_level = get_similarity_level(similarity)
-                                new_ulid = ULID()
+                                new_ulid =str(ULID())
                                 response["user_similar"].append({
                                     "id": new_ulid,
                                     "photo_id": matched_photo_id,
@@ -342,7 +342,7 @@ def process_facecam_usecase(user_id: str, creator_id: str, file_path: str):
         print(f"[Time] Store embedding + similarity search: {time.perf_counter() - t2:.4f}s")
         print("processing face cam 2")
         
-        processed_facecam_ulid = ULID()
+        processed_facecam_ulid =str(ULID())
         processed_facecam = {
             "id": processed_facecam_ulid,
             "user_id": user_id,

@@ -4,6 +4,8 @@ import grpc
 import consul
 import threading
 import time
+import signal
+import sys
 from pathlib import Path
 from concurrent import futures
 from dotenv import load_dotenv
@@ -95,7 +97,7 @@ def serve():
     health_servicer = health.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
 
-    # Enable server reflection
+    # Enable reflection
     SERVICE_NAMES = (
         ai_pb2.DESCRIPTOR.services_by_name['AiService'].full_name,
         health_pb2.DESCRIPTOR.services_by_name['Health'].full_name,
@@ -103,22 +105,40 @@ def serve():
     )
     reflection.enable_server_reflection(SERVICE_NAMES, server)
 
-    # Set gRPC health status
+    # Set Health status
     health_servicer.set(SERVICE_NAME, health_pb2.HealthCheckResponse.SERVING)
 
-    # Start server
     server.add_insecure_port(f"{GRPC_HOST}:{GRPC_PORT}")
     server.start()
     print(f"🚀 gRPC Server started on {GRPC_HOST}:{GRPC_PORT}")
 
-    # Get local IP dan register ke Consul
+    # Register to Consul
     ip_address = get_local_ip()
     service_id = f"{SERVICE_NAME}-{GRPC_PORT}"
     consul_client = register_with_consul(SERVICE_NAME, service_id, ip_address, GRPC_PORT, tags=["grpc", "ai"])
 
-    # Start heartbeat thread
+    # Heartbeat thread
     heartbeat_thread = threading.Thread(target=ttl_heartbeat, args=(consul_client, service_id), daemon=True)
     heartbeat_thread.start()
+
+    # Graceful shutdown handler
+    def shutdown_handler(signum, frame):
+        print(f"🛑 Received signal {signum}. Shutting down...")
+        try:
+            print("📤 Deregistering from Consul...")
+            consul_client.agent.service.deregister(service_id)
+            print("✅ Service deregistered")
+        except Exception as e:
+            print("❌ Error during deregister:", e)
+
+        print("⏹ Stopping gRPC server...")
+        server.stop(grace=None)  # You can add grace period like server.stop(5)
+        print("👋 Shutdown complete.")
+        sys.exit(0)
+
+    # Register signal handlers
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)
 
     server.wait_for_termination()
 

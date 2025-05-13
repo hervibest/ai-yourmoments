@@ -1,22 +1,30 @@
 import cv2
 import time
+import onnxruntime as ort
 from insightface.app import FaceAnalysis
 
-
 class FaceRecognizer:
-    def __init__(self, model_name='buffalo_l', device='gpu'):
-        print("face recog init")
-        
-        """
-        Kelas untuk mendeteksi wajah dan mengekstrak embedding.
-        """
+    def __init__(self, model_name='buffalo_l'):
+        print("🧠 Inisialisasi FaceRecognizer...")
+
+        available_providers = ort.get_available_providers()
+        print(f"✅ Available ONNX providers: {available_providers}")
+
+        if 'CUDAExecutionProvider' in available_providers:
+            providers = ['CUDAExecutionProvider']
+            ctx_id = 0
+            print("🚀 Menggunakan GPU (CUDA)")
+        else:
+            providers = ['CPUExecutionProvider']
+            ctx_id = -1
+            print("⚙️ Menggunakan CPU")
+
         self.app = FaceAnalysis(
-            name='buffalo_l',
-            providers=['CUDAExecutionProvider'],  # <--- pastikan ini dipakai
+            name=model_name,
+            providers=providers
         )
-        
-        self.app.prepare(ctx_id=0) # Gunakan CPU dulu untuk testing
-        print("face recog inits")
+        self.app.prepare(ctx_id=ctx_id)
+        print("✅ FaceRecognizer siap digunakan")
         
 
     def process_faces(self, image_path, photo_id):

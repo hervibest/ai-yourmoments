@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   ai-svc:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image:hervipro/ai-yourmoments
     container_name: ai-svc
     env_file:
       - .env.development

@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   ai-svc:
-    image:hervipro/ai-yourmoments
+    image: hervipro/ai-yourmoments:latest
     container_name: ai-svc
     env_file:
       - .env.development

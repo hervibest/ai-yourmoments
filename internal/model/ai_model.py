@@ -8,7 +8,7 @@ class AIBulkPhoto:
 
 @dataclass
 class AIPhoto:
-    original_filename :str
     id: str
+    original_filename :str
     compressed_url: Optional[str] = None
     collection_url: Optional[str] = None

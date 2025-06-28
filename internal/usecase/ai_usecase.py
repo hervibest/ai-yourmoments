@@ -53,8 +53,10 @@ class AIUseCase:
 def process_photo_bulk_usecase(process_bulk_photo: AIBulkPhoto, process_photo_list: List[AIPhoto]):
     """Process banyak foto, kumpulkan hasil, lalu kirim 1x bulk gRPC"""
     bulk_user_similar_photos = []
-    print("Accesed process_photo_bulk")
+    """Process banyak foto, kumpulkan hasil, lalu kirim 1x bulk gRPC"""
+    print("Accessed process_photo_bulk_usecase")
     print(f"Total photos: {len(process_photo_list)}")
+
 
     
     print("process_photo_bulk_usecase")
@@ -375,6 +377,7 @@ def process_facecam_task(user_id: str, creator_id: str, file_path: str):
         print("PROCESS FACECAM TASK")
 
         if success:
+            print(response_data)
             grpc_response = create_user_similar_facecam(response_data)
         else:
             print("❌ Facecam processing gagal:", response_data.get("error"))

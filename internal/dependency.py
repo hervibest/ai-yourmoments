@@ -31,10 +31,9 @@ def get_photo_service_stub():
         return _grpc_stub
 
     try:
-        # Ambil konfigurasi Consul dan nama service dari environment
         consul_host = os.getenv("CONSUL_HOST", "localhost")
         consul_port = int(os.getenv("CONSUL_PORT", 8500))
-        photo_svc_name = os.getenv("PHOTO_SVC_NAME", "photo-svc")
+        photo_svc_name = os.getenv("PHOTO_SVC_NAME", "photo-svc-grpc")
 
         print(f"🔍 Query ke Consul: {photo_svc_name} di {consul_host}:{consul_port}")
         c = consul.Consul(host=consul_host, port=consul_port)
@@ -48,7 +47,11 @@ def get_photo_service_stub():
         if not photo_service:
             raise RuntimeError(f"❌ Service '{photo_svc_name}' tidak ditemukan di Consul.")
 
-        address = photo_service["Address"]
+        address = photo_service.get("Address")
+        if not address:
+            tagged = photo_service.get("TaggedAddresses", {})
+            address = tagged.get("lan_ipv4", {}).get("Address", "localhost")
+
         port = photo_service["Port"]
         target = f"{address}:{port}"
         print(f"🔌 Membuat gRPC channel ke {target}")

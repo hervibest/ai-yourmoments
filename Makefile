@@ -4,6 +4,9 @@ start-worker:
 start-server:
 	python3 -m app_main.web.main
 
+start-worker:
+	python3 -m app_main.worker.main
+
 test-server:
 	python3 -m app_main.web.test
 

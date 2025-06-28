@@ -98,7 +98,7 @@ class AISubscriber:
             data = json.loads(msg.data.decode())
             logger.info(f"Processing photo: {data['photo_id']}")
 
-            success, error_message = self.ai_usecase.process_photo(
+            success, error_message = await self.ai_usecase.process_photo(
                 data['photo_id'],
                 data['creator_id'],
                 data['url'],
@@ -124,7 +124,7 @@ class AISubscriber:
             data = json.loads(msg.data.decode())
             logger.info(f"Processing facecam for user: {data['user_id']}")
 
-            success, error_message = self.ai_usecase.process_facecam(
+            success, error_message = await self.ai_usecase.process_facecam(
                 data['user_id'],
                 data['creator_id'],
                 data['url']
@@ -166,7 +166,7 @@ class AISubscriber:
             ]
 
 
-            success, error_message = self.ai_usecase.process_photo_bulk(
+            success, error_message = await self.ai_usecase.process_photo_bulk(
                 bulk_photo,
                 photos
             )

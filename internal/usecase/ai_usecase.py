@@ -7,9 +7,10 @@ from ulid import ULID
 import time
 from typing import List
 from minio.error import S3Error
-
+import asyncio
 # from internal.config.celery_config import celery_app
 from internal.config.minio_config import minio_client, BUCKET_NAME
+from internal.publisher.jetstream import publish_json_to_jetstream_single,publish_json_to_jetstream_bulk, publish_json_to_jetstream_facecam
 from internal.services.face_recognizer_service import FaceRecognizer
 from internal.repository.ai_repository import VectorRepository
 from internal.adapter.photo_service import create_user_similar, create_user_similar_facecam, build_bulk_user_similar_request
@@ -26,71 +27,129 @@ class AIUseCase:
     #     self.detector = detector
     #     self.repository = repository
 
-    def process_photo(self, photo_id: str, creator_id: str, file_url: str, original_filename: str):
+    async def process_photo(self, photo_id: str, creator_id: str, file_url: str, original_filename: str):
         """Push processing task to Celery worker"""
         # download_and_process_photo_task.delay(photo_id, file_url)
-        download_and_process_photo_task(photo_id, creator_id, file_url, original_filename)
+        await download_and_process_photo_task(photo_id, creator_id, file_url, original_filename)
 
         return True, ""
     
-    def process_facecam(self, user_id: str, creator_id: str, file_url: str):
+    async def process_facecam(self, user_id: str, creator_id: str, file_url: str):
         """Push processing task to Celery worker"""
         # download_and_process_photo_task.delay(photo_id, file_url)
-        download_and_process_facecam_task(user_id, creator_id, file_url)
+        await download_and_process_facecam_task(user_id, creator_id, file_url)
 
         return True, ""
     
-    def process_photo_bulk(self, process_bulk_photo: AIBulkPhoto, process_photo_list: List[AIPhoto]):
+    async def process_photo_bulk(self, process_bulk_photo: AIBulkPhoto, process_photo_list: List[AIPhoto]):
         print("Accesed process_photo_bulk")
         print(process_photo_list)
         """Push processing task to Celery worker"""
         # download_and_process_photo_task.delay(photo_id, file_url)
-        process_photo_bulk_usecase(process_bulk_photo, process_photo_list)
-
+        await  process_photo_bulk_usecase(process_bulk_photo, process_photo_list)
         return True, ""
 
-
-def process_photo_bulk_usecase(process_bulk_photo: AIBulkPhoto, process_photo_list: List[AIPhoto]):
-    """Process banyak foto, kumpulkan hasil, lalu kirim 1x bulk gRPC"""
+def build_bulk_user_similar_payload(process_bulk_photo, bulk_results: List[dict]) -> dict:
     bulk_user_similar_photos = []
-    """Process banyak foto, kumpulkan hasil, lalu kirim 1x bulk gRPC"""
-    print("Accessed process_photo_bulk_usecase")
-    print(f"Total photos: {len(process_photo_list)}")
 
+    for result in bulk_results:
+        photo_detail = result["photo_detail"]
+        user_similar_list = result["user_similar_photo"]
 
-    
-    print("process_photo_bulk_usecase")
+        photo_detail_json = {
+            "id": photo_detail.get("id", ""),
+            "photo_id": photo_detail.get("photo_id", ""),
+            "file_name": photo_detail.get("file_name", ""),
+            "file_key": photo_detail.get("file_key", ""),
+            "size": photo_detail.get("size", 0),
+            "type": photo_detail.get("type", ""),
+            "checksum": photo_detail.get("checksum", ""),
+            "width": photo_detail.get("width", 0),
+            "height": photo_detail.get("height", 0),
+            "url": photo_detail.get("url", ""),
+            "your_moments_type": photo_detail.get("your_moments_type", ""),
+            "created_at": iso_format_or_now(photo_detail.get("created_at")),
+            "updated_at": iso_format_or_now(photo_detail.get("updated_at")),
+        }
 
-    for photo in process_photo_list:
-        photo_id = photo.id
-        file_url = photo.compressed_url or photo.collection_url  # fallback kalau compressed kosong
-        original_filename = photo.original_filename   # fallback kalau compressed kosong
-        
-        print(photo)
-        print(photo_id)
-        print(file_url)
-        
-
-        # Proses download dan deteksi wajah
-        success, response = download_and_process_photo_task_without_grpc(photo_id, process_bulk_photo.creator_id, file_url, original_filename)
-
-        if not success:
-            print(f"Failed processing {photo_id}: {response}")
-            continue  # Skip foto gagal
+        user_similar_photos = []
+        for user_sim in user_similar_list:
+            user_similar_photos.append({
+                "id": user_sim.get("id", ""),
+                "photo_id": user_sim.get("photo_id", ""),
+                "user_id": user_sim.get("user_id", ""),
+                "similarity": user_sim.get("similarity_level", 0),
+                "is_wishlist": user_sim.get("is_wishlist", False),
+                "is_resend": user_sim.get("is_resend", False),
+                "is_cart": user_sim.get("is_cart", False),
+                "is_favorite": user_sim.get("is_favorite", False),
+                "created_at": iso_format_or_now(user_sim.get("created_at")),
+                "updated_at": iso_format_or_now(user_sim.get("updated_at")),
+            })
 
         bulk_user_similar_photos.append({
-            "photo_detail": response["processed_photo_detail"],
-            "user_similar_photo": response["user_similar"]
+            "photo_detail": photo_detail_json,
+            "user_similar_photo": user_similar_photos
         })
 
-    # Kalau sudah semua diproses
-    grpc_response = build_bulk_user_similar_request(process_bulk_photo, bulk_user_similar_photos)
-    return grpc_response
+    payload = {
+        "bulk_photo": {
+            "id": process_bulk_photo.id,
+            "creator_id": process_bulk_photo.creator_id,
+            "bulk_photo_status": "SUCCESS"
+        },
+        "bulk_user_similar_photo": bulk_user_similar_photos
+    }
+
+    return payload
+
+async def process_photo_bulk_usecase(process_bulk_photo: AIBulkPhoto, process_photo_list: List[AIPhoto]):
+    try:
+        """Process banyak foto, kumpulkan hasil, lalu kirim 1x bulk gRPC"""
+        bulk_user_similar_photos = []
+        """Process banyak foto, kumpulkan hasil, lalu kirim 1x bulk gRPC"""
+        print("Accessed process_photo_bulk_usecase")
+        print(f"Total photos: {len(process_photo_list)}")
+
+
+        
+        print("process_photo_bulk_usecase")
+
+        for photo in process_photo_list:
+            photo_id = photo.id
+            file_url = photo.compressed_url or photo.collection_url  # fallback kalau compressed kosong
+            original_filename = photo.original_filename   # fallback kalau compressed kosong
+            
+            print(photo)
+            print(photo_id)
+            print(file_url)
+            
+
+            # Proses download dan deteksi wajah
+            success, response = download_and_process_photo_task_without_grpc(photo_id, process_bulk_photo.creator_id, file_url, original_filename)
+
+            if not success:
+                print(f"Failed processing {photo_id}: {response}")
+                continue  # Skip foto gagal
+
+            bulk_user_similar_photos.append({
+                "photo_detail": response["processed_photo_detail"],
+                "user_similar_photo": response["user_similar"]
+            })
+
+        # Kalau sudah semua diproses
+        json_payload = build_bulk_user_similar_payload(process_bulk_photo, bulk_user_similar_photos)
+        print("Sending bulk user similar photos to JetStream...")
+        await publish_json_to_jetstream_bulk(json_payload)
+        print("Bulk user similar photos sent successfully.")
+
+    except Exception as e:
+        return False, {"error": f"Error processing file: {str(e)}"}
 
 # @celery_app.task
 
 
-def download_and_process_photo_task(photo_id: str, creator_id: str, file_url: str, original_filename: str):
+async def download_and_process_photo_task(photo_id: str, creator_id: str, file_url: str, original_filename: str):
     print("test")
     """Download file dan simpan ke disk sementara, lalu masukkan ke queue AI worker."""
     try:
@@ -101,12 +160,12 @@ def download_and_process_photo_task(photo_id: str, creator_id: str, file_url: st
                 for chunk in response.iter_content(1024):
                     f.write(chunk)
 
-        process_photo_task(photo_id, creator_id, save_path, original_filename)
+        await process_photo_task(photo_id, creator_id, save_path, original_filename)
 
     except Exception as e:
         print(f"Error downloading file {photo_id}: {str(e)}")
         
-def download_and_process_facecam_task(user_id: str, creator_id: str, file_url: str):
+async def download_and_process_facecam_task(user_id: str, creator_id: str, file_url: str):
     print("test facecam")
     """Download file dan simpan ke disk sementara, lalu masukkan ke queue AI worker."""
     try:
@@ -117,7 +176,7 @@ def download_and_process_facecam_task(user_id: str, creator_id: str, file_url: s
                 for chunk in response.iter_content(1024):
                     f.write(chunk)
 
-        process_facecam_task(user_id, creator_id, save_path)
+        await process_facecam_task(user_id, creator_id, save_path)
 
     except Exception as e:
         print(f"Error downloading file {user_id}: {str(e)}")
@@ -264,12 +323,48 @@ def process_photo_usecase(photo_id: str,  creator_id: str, file_path: str, origi
     except Exception as e:
         return False, {"error": f"Error processing file: {str(e)}"}
 
+def iso_format_or_now(value):
+    return value if value else datetime.datetime.utcnow().isoformat()
+
+
 # @celery_app.task
-def process_photo_task(photo_id: str, creator_id: str, file_path: str, original_filename: str):
+async def process_photo_task(photo_id: str, creator_id: str, file_path: str, original_filename: str):
     try:
         response = process_photo_usecase(photo_id, creator_id, file_path, original_filename)
         print("Gonna send to GRPC")
-        grpc_response = create_user_similar(response)
+
+        payload = {
+            "photo_detail": {
+                "id": response["processed_photo_detail"].get("id", ""),
+                "photo_id": response["processed_photo_detail"].get("photo_id", ""),
+                "file_name": response["processed_photo_detail"].get("file_name", ""),
+                "file_key": response["processed_photo_detail"].get("file_key", ""),
+                "size": response["processed_photo_detail"].get("size", 0),
+                "type": "",
+                "checksum": "",
+                "width": 0,
+                "height": 0,
+                "url": response["processed_photo_detail"].get("url", ""),
+                "your_moments_type": response["processed_photo_detail"].get("your_moments_type", ""),
+                "created_at": iso_format_or_now(response["processed_photo_detail"].get("created_at")),
+                "updated_at": iso_format_or_now(response["processed_photo_detail"].get("updated_at")),
+            },
+            "user_similar_photo": []
+        }
+
+        for user_sim in response.get("user_similar", []):
+            payload["user_similar_photo"].append({
+                "id": user_sim.get("id", ""),
+                "photo_id": user_sim.get("photo_id", ""),
+                "user_id": user_sim.get("user_id", ""),
+                "similarity": user_sim.get("similarity_level", 0),
+                "created_at": iso_format_or_now(user_sim.get("created_at")),
+                "updated_at": iso_format_or_now(user_sim.get("updated_at")),
+            })
+
+        print("Publishing to NATS JetStream...")
+        
+        await publish_json_to_jetstream_single(payload)
         return True, response
 
     except Exception as e:
@@ -370,15 +465,42 @@ def process_facecam_usecase(user_id: str, creator_id: str, file_path: str):
     
 
 
+def build_facecam_payload(response: dict) -> dict:
+    processed_detail = response.get("processed_facecam", {})
+
+    payload = {
+        "facecam": {
+            "id": processed_detail.get("id", ""),
+            "user_id": processed_detail.get("user_id", ""),
+            "is_processed": processed_detail.get("is_processed", False),
+            "updated_at": iso_format_or_now(processed_detail.get("updated_at")),
+        },
+        "user_similar_photo": []
+    }
+
+    for user_sim in response.get("user_similar", []):
+        payload["user_similar_photo"].append({
+            "id": user_sim.get("id", ""),
+            "photo_id": user_sim.get("photo_id", ""),
+            "user_id": user_sim.get("user_id", ""),
+            "similarity": user_sim.get("similarity_level", 0),
+            "created_at": iso_format_or_now(user_sim.get("created_at")),
+            "updated_at": iso_format_or_now(user_sim.get("updated_at")),
+        })
+
+    return payload
+
 # @celery_app.task
-def process_facecam_task(user_id: str, creator_id: str, file_path: str):
+async def process_facecam_task(user_id: str, creator_id: str, file_path: str):
     try:
         success, response_data = process_facecam_usecase(user_id, creator_id, file_path)
         print("PROCESS FACECAM TASK")
 
         if success:
             print(response_data)
-            grpc_response = create_user_similar_facecam(response_data)
+            json_payload = build_facecam_payload(response_data)
+            await publish_json_to_jetstream_facecam(json_payload)
+
         else:
             print("❌ Facecam processing gagal:", response_data.get("error"))
 

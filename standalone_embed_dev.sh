@@ -40,10 +40,14 @@ EOF
         exit 1
     fi
 
+    docker network inspect milvus_net >/dev/null 2>&1 || docker network create milvus_net
+
     mkdir -p ~/milvus-data/volumes/milvus
+
+
     sudo docker run -d \
         --name milvus-standalone \
-        --network backend \
+        --network milvus_net \
         --security-opt seccomp:unconfined \
         -e ETCD_USE_EMBED=true \
         -e ETCD_DATA_DIR=/var/lib/milvus/etcd \

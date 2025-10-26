@@ -10,37 +10,40 @@ services:
       - .env.development
     ports:
       - "50051:50051"
-    depends_on:
-        milvus:
-          condition: service_healthy
+    # depends_on:
+    #     milvus:
+    #       condition: service_healthy
     networks:
       - backend
 
-  milvus:
-    image: milvusdb/milvus:v2.5.5
-    container_name: milvus-standalone-development
-    command: ["milvus", "run", "standalone"]
-    ports:
-      - "19530:19530"
-      - "9091:9091"
-      - "2379:2379"
-    environment:
-      ETCD_USE_EMBED: "true"
-      ETCD_DATA_DIR: "/var/lib/milvus/etcd"
-      ETCD_CONFIG_PATH: "/milvus/configs/embedEtcd.yaml"
-      COMMON_STORAGETYPE: "local"
-    volumes:
-      - ./volumes/milvus:/var/lib/milvus
-      - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
-      - ./user.yaml:/milvus/configs/user.yaml
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - backend
+  # milvus:
+  #   image: milvusdb/milvus:v2.5.5
+  #   container_name: milvus-standalone-development
+  #   command: ["milvus", "run", "standalone"]
+  #   ports:
+  #     - "19530:19530"
+  #     - "9091:9091"
+  #     - "2379:2379"
+  #   environment:
+  #     ETCD_USE_EMBED: "true"
+  #     ETCD_DATA_DIR: "/var/lib/milvus/etcd"
+  #     ETCD_CONFIG_PATH: "/milvus/configs/embedEtcd.yaml"
+  #     COMMON_STORAGETYPE: "local"
+  #   volumes:
+  #     # Volume data milvus
+  #     - ./volumes/milvus:/var/lib/milvus
+  #     # File konfigurasi embed etcd
+  #     - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
+  #     # File user config
+  #     - ./user.yaml:/milvus/configs/user.yaml:ro
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #   restart: unless-stopped
+  #   networks:
+  #     - backend
 
 networks:
   backend:
@@ -48,4 +51,3 @@ networks:
 
 volumes:
   minio_data:
-  milvus_data:

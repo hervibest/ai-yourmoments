@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bullseye
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
@@ -26,4 +26,4 @@ COPY models/buffalo_l /root/.insightface/models/buffalo_l
 COPY . .
 ENV PYTHONPATH=/app
 # Jalankan aplikasi
-CMD ["python", "app_main/web/main.py"]
+CMD ["python", "app_main/worker/main.py"]

@@ -29,8 +29,8 @@ class VectorRepository:
         else:
             raise RuntimeError("❌ Gagal connect ke Milvus setelah 10 kali percobaan")
 
-        self.refresh_collection("kameramen_faces")
-        self.refresh_collection("face_recognition")
+        # self.refresh_collection("kameramen_faces")
+        # self.refresh_collection("face_recognition")
 
         # Buat ulang koleksi
         self.kameramen_collection = self.create_collection(
@@ -115,8 +115,14 @@ class VectorRepository:
         Simpan embedding wajah dari foto kameramen.
         """
         print("INI ADALAH STORE PROFILE EMBEDING CREATOR ID: " + creator_id)
-
         self.face_recognition_collection.load()
+        # expr = f'user_id == "{user_id}" and creator_id == "{creator_id}"'
+        # old = self.face_recognition_collection.query(expr=expr, output_fields=["pk"])
+        # if old:
+        #     print("DELETE EXISTING FACECAME EMBEDING WITH CREATOR : " + creator_id + " USER ID: " + user_id)
+        #     ids = [r["pk"] for r in old]
+        #     self.face_recognition_collection.delete(expr=f'pk in {ids}')
+
         self.face_recognition_collection.insert([[user_id], [creator_id], [embedding]])
         print(f"Embedding profile {user_id} dengan creator id {creator_id} - disimpan.")
 
@@ -191,23 +197,21 @@ class VectorRepository:
             return []
 
         try:
-            # Normalisasi embedding (wajib untuk COSINE)
-            norm = np.linalg.norm(embedding)
-            if norm == 0:
-                print("❌ Embedding bernilai nol (tidak valid)")
-                return []
-            embedding = embedding / norm
-            print(f"ℹ️ Norm embedding: {np.linalg.norm(embedding)}")
+            # ❌ Hapus normalisasi agar konsisten dengan search_similar_faces
+            # norm = np.linalg.norm(embedding)
+            # if norm == 0:
+            #     print("❌ Embedding bernilai nol (tidak valid)")
+            #     return []
+            # embedding = embedding / norm
 
-            # Load koleksi
             self.kameramen_collection.load()
             print(f"📦 Jumlah data dalam koleksi: {self.kameramen_collection.num_entities}")
 
             search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
 
-            print("INI ADALAH EXCLUDE CREATOR ID SERACH SIMILAR SIMILAR PHOTO : " + creator_id_to_exclude)
+            print("INI ADALAH EXCLUDE CREATOR ID SERACH SIMILAR PHOTO : " + creator_id_to_exclude)
 
-            # Tambahkan expr untuk mengecualikan creator_id tertentu
+            # Gunakan expr untuk mengecualikan creator_id tertentu
             expr = f'creator_id != "{creator_id_to_exclude}"'
 
             search_result = self.kameramen_collection.search(
@@ -220,18 +224,22 @@ class VectorRepository:
             )
 
             print("📝 Hasil pencarian mentah:")
-            for match in search_result[0]:
-                print(
-                    f"  → photo_id={match.entity.photo_id}, face_id={match.entity.face_id}, creator_id={match.entity.creator_id}, distance={match.distance}")
+            results = list(search_result[0]) if hasattr(search_result[0], '__iter__') else search_result[0].to_list()
 
-            # Ambil hasil yang memiliki distance > 0.3 (semakin tinggi semakin mirip)
+            for match in results:
+                entity = match.entity
+                print(
+                    f"  → photo_id={entity.get('photo_id')}, face_id={entity.get('face_id')}, creator_id={entity.get('creator_id')}, distance={match.distance}"
+                )
+
+            # Gunakan threshold serupa dengan search_similar_faces
             filtered_results = [
-                (match.entity.photo_id, match.entity.face_id, match.distance)
-                for match in search_result[0]
-                if match.distance > 0.3
+                (match.entity.get('photo_id'), match.entity.get('face_id'), match.distance)
+                for match in results
+                if match.distance >= 0.3
             ]
 
-            print(f"✅ Ditemukan {len(filtered_results)} hasil mirip (distance > 0.3)")
+            print(f"✅ Ditemukan {len(filtered_results)} hasil mirip (distance >= 0.3)")
             return filtered_results
 
         except Exception as e:

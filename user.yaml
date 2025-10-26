@@ -1,0 +1,4 @@
+# user.yaml
+users:
+  root:
+    password: Milvus

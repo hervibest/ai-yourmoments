@@ -1,5 +1,5 @@
-start-worker:
-	celery -A internal.config.celery_config worker --loglevel=info
+# start-worker:
+# 	celery -A internal.config.celery_config worker --loglevel=info
 
 start-server:
 	python3 -m app_main.web.main

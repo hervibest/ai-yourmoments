@@ -1,9 +1,10 @@
 # publisher.py
 import json
+import os
 from nats.aio.client import Client as NATS
 from nats.js.api import StreamConfig
 
-NATS_URL = "nats://localhost:4222"
+NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
 SINGLE_PHOTO_TOPIC = "ai.single.photo"
 SINGLE_FACECAM_TOPIC = "ai.single.facecam"
 BULK_PHOTO_TOPIC = "ai.bulk.photo"

@@ -37,7 +37,7 @@ jobs:
       - name: Build & Push ai-svc
         run: |
            docker build \
-            -f ai-svc/Dockerfile \
+            -f Dockerfile \
             -t $REGISTRY/$IMAGE_NAMESPACE/ai-svc:$VERSION .
            docker push $REGISTRY/$IMAGE_NAMESPACE/ai-svc:$VERSION
 

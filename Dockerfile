@@ -8,6 +8,8 @@ WORKDIR /app
 # Install dependencies sistem + build tools
 RUN apt-get update && apt-get install -y \
     git \
+    wget \
+    unzip \
     libgl1-mesa-glx \
     libglib2.0-0 \
     build-essential \

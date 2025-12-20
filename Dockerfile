@@ -19,8 +19,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir -r requirements.txt
 
-# Salin model buffalo_l InsightFace ke direktori default
-COPY models/buffalo_l /root/.insightface/models/buffalo_l
+# Download model buffalo_l InsightFace
+RUN mkdir -p /root/.insightface/models/buffalo_l \
+ && wget -O /root/.insightface/models/buffalo_l/model.zip \
+    https://github.com/deepinsight/insightface/releases/download/v0.0.1/buffalo_l.zip \
+ && unzip /root/.insightface/models/buffalo_l/model.zip -d /root/.insightface/models/buffalo_l \
+ && rm /root/.insightface/models/buffalo_l/model.zip
+
 
 # Salin seluruh source code proyek
 COPY . .

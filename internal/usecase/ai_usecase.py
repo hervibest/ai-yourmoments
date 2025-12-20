@@ -139,6 +139,7 @@ async def process_photo_bulk_usecase(process_bulk_photo: AIBulkPhoto, process_ph
 
         # Kalau sudah semua diproses
         json_payload = build_bulk_user_similar_payload(process_bulk_photo, bulk_user_similar_photos)
+        print("Ini adalah pyload json ", json_payload)
         print("Sending bulk user similar photos to JetStream...")
         await publish_json_to_jetstream_bulk(json_payload)
         print("Bulk user similar photos sent successfully.")
@@ -224,10 +225,15 @@ def process_photo_usecase(photo_id: str,  creator_id: str, file_path: str, origi
 
         t2 = time.perf_counter()
         if embeddings:
+
+            print("Embeddings found:", len(embeddings))
+            print(embeddings)
             for emb_photo_id, face_id, embedding in embeddings:
                 repository.store_kameramen_embedding(emb_photo_id, creator_id, face_id, embedding)
                 
                 matched_results = repository.search_similar_faces(embedding, creator_id)
+
+                print("Ini matched results", matched_results)
                 
                 for matched_user_id, similarity in matched_results:
                     if matched_user_id and similarity >= SIMILARITY_THRESHOLD:

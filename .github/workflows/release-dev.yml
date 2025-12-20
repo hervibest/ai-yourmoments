@@ -76,13 +76,13 @@ jobs:
             --password-stdin
 
           echo "📦 Pull images"
-          docker compose -f docker-compose-dev.yaml pull
+          docker compose -f docker-compose.dev.yaml pull
 
           echo "🛑 Stop containers"
-          docker compose -f docker-compose-dev.yaml down
+          docker compose -f docker-compose.dev.yaml down
 
           echo "🚀 Start containers"
-          docker compose -f docker-compose-dev.yaml up -d
+          docker compose -f docker-compose.dev.yaml up -d
 
           echo "🧹 Cleanup images"
           docker image prune -f

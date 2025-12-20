@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Download model buffalo_l InsightFace
 RUN mkdir -p /root/.insightface/models/buffalo_l \
  && wget -O /root/.insightface/models/buffalo_l/model.zip \
-    https://github.com/deepinsight/insightface/releases/download/v0.0.1/buffalo_l.zip \
+    https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip \
  && unzip /root/.insightface/models/buffalo_l/model.zip -d /root/.insightface/models/buffalo_l \
  && rm /root/.insightface/models/buffalo_l/model.zip
 

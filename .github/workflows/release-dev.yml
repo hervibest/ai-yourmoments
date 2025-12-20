@@ -65,9 +65,9 @@ jobs:
 
           cd /home/ubuntu/app/ai-yourmoments
 
-          grep -q "^APP_VERSION=" .env && \
-            sed -i "s|^APP_VERSION=.*|APP_VERSION=${APP_VERSION}|" .env || \
-            echo "APP_VERSION=${APP_VERSION}" >> .env
+          grep -q "^APP_VERSION=" .env.development && \
+            sed -i "s|^APP_VERSION=.*|APP_VERSION=${APP_VERSION}|" .env.development || \
+            echo "APP_VERSION=${APP_VERSION}" >> .env.development 
 
           echo "🔐 Login to GHCR"
           echo "${{ secrets.REGISTRY_PASSWORD }}" | \

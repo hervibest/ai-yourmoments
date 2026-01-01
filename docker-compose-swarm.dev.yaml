@@ -12,7 +12,8 @@ services:
     #     milvus:
     #       condition: service_healthy
     networks:
-      - yourmoments_yourmoments_network_backend
+      yourmoments_yourmoments_network_backend:
+        external: true
 
   # milvus:
   #   image: milvusdb/milvus:v2.5.5
@@ -41,7 +42,7 @@ services:
   #     - backend
 
 networks:
-  backend:
+  yourmoments_yourmoments_network_backend:
     external: true
 
 volumes:

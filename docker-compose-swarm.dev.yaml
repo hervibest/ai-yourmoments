@@ -19,7 +19,7 @@ services:
       ETCD_CONFIG_PATH: "/milvus/configs/embedEtcd.yaml"
       COMMON_STORAGETYPE: "local"
     volumes:
-      - ~/milvus-data/volumes/milvus:/var/lib/milvus
+      - /home/ubuntu/milvus-data/volumes/milvus:/var/lib/milvus
       - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
       - ./user.yaml:/milvus/configs/user.yaml
     ports:

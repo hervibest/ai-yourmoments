@@ -12,7 +12,7 @@ services:
     #     milvus:
     #       condition: service_healthy
     networks:
-      - yourmoments_network_backend
+      - yourmoments_yourmoments_network_backend
 
   # milvus:
   #   image: milvusdb/milvus:v2.5.5

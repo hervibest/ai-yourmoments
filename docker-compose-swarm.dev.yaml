@@ -13,32 +13,31 @@ services:
     #       condition: service_healthy
     networks:
       yourmoments_yourmoments_network_backend:
-
-  # milvus:
-  #   image: milvusdb/milvus:v2.5.5
-  #   container_name: milvus-standalone-development
-  #   command: ["milvus", "run", "standalone"]
-  #   ports:
-  #     - "19530:19530"
-  #     - "9091:9091"
-  #     - "2379:2379"
-  #   environment:
-  #     ETCD_USE_EMBED: "true"
-  #     ETCD_DATA_DIR: "/var/lib/milvus/etcd"
-  #     ETCD_CONFIG_PATH: "/milvus/configs/embedEtcd.yaml"
-  #     COMMON_STORAGETYPE: "local"
-  #   volumes:
-  #     - ./volumes/milvus:/var/lib/milvus
-  #     - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
-  #     - ./user.yaml:/milvus/configs/user.yaml
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #   restart: unless-stopped
-  #   networks:
-  #     - backend
+      
+  milvus:
+    image: milvusdb/milvus:v2.5.5
+    command: ["milvus", "run", "standalone"]
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+      - "2379:2379"
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: "/var/lib/milvus/etcd"
+      ETCD_CONFIG_PATH: "/milvus/configs/embedEtcd.yaml"
+      COMMON_STORAGETYPE: "local"
+    volumes:
+      - ./volumes/milvus:/var/lib/milvus
+      - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
+      - ./user.yaml:/milvus/configs/user.yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - yourmoments_yourmoments_network_backend
 
 networks:
   yourmoments_yourmoments_network_backend:

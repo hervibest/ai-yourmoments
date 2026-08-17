@@ -20,4 +20,5 @@ nats-py==2.10.0
 # dotenv==
 # nats
 # opencv
+setuptools==81.0.0
 
